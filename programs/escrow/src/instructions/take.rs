@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
-    associated_token::AssociatedToken, token_interface::transfer_checked, token_interface::{Mint, TokenAccount, TokenInterface, TransferChecked}
+    associated_token::AssociatedToken,
+    token_interface::{Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
 use crate::state::Escrow;
@@ -32,14 +33,12 @@ pub struct Take<'info> {
     pub taker_ata_b: InterfaceAccount<'info, TokenAccount>,
 
     #[account(
-			payer = maker,
 			seeds = [b"escrow", escrow.maker.key().as_ref(), escrow.seed.to_le_bytes().as_ref()],
 			bump = escrow.bump,
 		)]
     pub escrow: Account<'info, Escrow>,
 
     #[account(
-			payer = maker,
 			associated_token::mint = mint_a,
 			associated_token::authority = escrow,
 			associated_token::token_program = token_program,
@@ -52,29 +51,29 @@ pub struct Take<'info> {
 }
 
 impl<'info> Take<'info> {
-    pub fn init_escrow(&mut self, seed: u64, receive: u64, bumps: &MakeBumps) -> Result<()> {
-			self.escrow.self_inner(Escrow{
-				seed: self.
-    maker: self.maker.key(),
-    mint_a: self.mint_a.key(),
-    mint_b: self.mint_b.key(),
-    receive,
-    bump: bumps.escrow,
-				
-			})
+  // Transfer the token from the taker to the maker ata;
+  pub fn deposit(&mut self) -> Result<()> {
+    let cpi_program = self.token_program.to_account_info();
 
+    let cpi_accounts = TransferChecked {
+      from: self.taker_ata_b.to_account_info(),
+      mint: self.mint_b.to_account_info(),
+      to: self.maker_ata_b.to_account_info(),
+      authority: self.taker.to_account_info(),
+    };
+
+  }
+
+  // Trasnfer the token from the escrow to the taker ata;
+    pub fn release(&mut self) -> Result<()> {
+      let cpi_program = self.token_program.to_account_info();
+
+      let transfer_accounts = TransferChecked {
+        from: self.vault.to_account_info(),
+        mint: self.mint_b.to_account_info(),
+        to: self.escrow.
+        authority: self.vault.to_account_info(),
+      }
         Ok(())
     }
-
-		pub fn deposit(&mut self, deposit: u64) -> Result<()> {
-			let transfer_accounts = TransferChecked {
-    from: self.maker_ata_a.to_account_info(),
-    mint: self.mint_b,
-    to: self.vault.get_account_info(),
-    authority: self.maker.to_account_info(),
-}
-
-let cpi_ctx = CpiContext::new(self.token_program.to_account_info(), transfer_accounts);
-
-transfer_checked(cpi_ctx, amount: deposit, self.mint_a.decimals);
 }

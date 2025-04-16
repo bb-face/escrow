@@ -1,19 +1,28 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
-    associated_token::AssociatedToken, token_interface::transfer_checked, token_interface::{Mint, TokenAccount, TokenInterface, TransferChecked}
+    associated_token::AssociatedToken,
+    token_interface::transfer_checked,
+    token_interface::{Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
 use crate::state::Escrow;
 
+// The instruction `#[derive(Accounts)]` holds all the accounts that are needed for an instruction:
+// 	-	This macro is applied to a Rust struct that collects all accounts involved in a program instruction.
+// 	-	It tells Anchor to validate the account constraints and automatically deserialize them into usable types.
+// 	-	Anchor also performs automatic checks like ownership, PDA derivation, and mutability based on the struct definition.
 #[derive(Accounts)]
 #[instruction(seed: u64)]
 pub struct Make<'info> {
     #[account(mut)]
     pub maker: Signer<'info>,
+
     #[account(
 			mint::token_program = token_program
 		)]
+    // An InterfaceAccount is a type that represents an account on-chain that implements the TokenInterface trait.
     pub mint_a: InterfaceAccount<'info, Mint>,
+
     #[account(
 			mint::token_program = token_program
 		)]
@@ -30,9 +39,10 @@ pub struct Make<'info> {
     #[account(
 			init,
 			payer = maker,
+			// le = little endian
 			seeds = [b"escrow", maker.key().as_ref(), seed.to_le_bytes().as_ref()],
-			space = 8 + Escrow::INIT_SPACE,
 			bump,
+			space = 8 + Escrow::INIT_SPACE,
 		)]
     pub escrow: Account<'info, Escrow>,
 
@@ -52,26 +62,33 @@ pub struct Make<'info> {
 
 impl<'info> Make<'info> {
     pub fn init_escrow(&mut self, seed: u64, receive: u64, bumps: &MakeBumps) -> Result<()> {
-			self.escrow.self_inner(Escrow{
-    maker: self.maker.key(),
-    mint_a: self.mint_a.key(),
-    mint_b: self.mint_b.key(),
-    receive,
-    bump: bumps.escrow,
-				
-			})
-        Ok(());
+        self.escrow.set_inner(Escrow {
+            maker: self.maker.key(),
+            mint_a: self.mint_a.key(),
+            mint_b: self.mint_b.key(),
+            receive,
+            bump: bumps.escrow,
+            seed,
+        });
+
+        Ok(())
     }
 
-		pub fn deposit(&mut self, deposit: u64) -> Result<()> {
-			let transfer_accounts = TransferChecked {
-    from: self.maker_ata_a.to_account_info(),
-    mint: self.mint_b,
-    to: self.vault.get_account_info(),
-    authority: self.maker.to_account_info(),
-}
+    pub fn deposit(&mut self, deposit: u64) -> Result<()> {
+        // Native transfer (of SOL) are different from token transfers.
+        let cpi_program = self.token_program.to_account_info();
 
-let cpi_ctx = CpiContext::new(self.token_program.to_account_info(), transfer_accounts);
+        let transfer_accounts = TransferChecked {
+            from: self.maker_ata_a.to_account_info(),
+            mint: self.mint_a.to_account_info(),
+            to: self.vault.to_account_info(),
+            authority: self.maker.to_account_info(),
+        };
 
-transfer_checked(cpi_ctx, amount: deposit, self.mint_a.decimals);
+        let cpi_ctx = CpiContext::new(cpi_program, transfer_accounts);
+
+        transfer_checked(cpi_ctx, deposit, self.mint_a.decimals)?;
+
+        Ok(())
+    }
 }
